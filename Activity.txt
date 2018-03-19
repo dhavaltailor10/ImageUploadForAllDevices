@@ -1,0 +1,210 @@
+   private Uri pictureUrl;
+    private Uri cameraUrl = null;
+    public static int CHOOSE_CAPTURE_PHOTO_INTENT = 101;
+    public static int CHOOSE_PHOTO_INTENT = 102;
+    public static int SELECT_PICTURE_CAMERA = 103;
+    public static int SELECT_PHOTO_CAMERA = 104;
+	
+	
+	
+	
+	
+	/****************************OnActivityResult**************************************************************/
+	
+	  @RequiresApi(api = Build.VERSION_CODES.KITKAT)
+    @Override
+    public void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (resultCode == Activity.RESULT_OK) {
+            if (requestCode == CHOOSE_PHOTO_INTENT) {
+                if (data != null && data.getData() != null) {
+                    Uri uri = data.getData();
+                    String path = null;
+                    try {
+                        path = GetPathFromURI.getPath(ActivityContactInformation.this, uri);
+                        imageUpload(path);
+
+                        Bitmap bitmap = BitmapFactory.decodeFile(path);
+                        imageupload.setImageBitmap(bitmap);
+
+                    } catch (URISyntaxException e) {
+                        e.printStackTrace();
+                    }
+
+
+                }
+            } else if (requestCode == CHOOSE_CAPTURE_PHOTO_INTENT) {
+                try {
+                    pictureUrl = Uri.fromFile(FileUtil.getInstance(context).createImageTempFile(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)));
+                    String pathg = getRealPathFromURIPath(pictureUrl, ActivityContactInformation.this);
+                    imageUpload(pathg);
+                    Bitmap photo = (Bitmap) data.getExtras().get("data");
+                    imageupload.setImageBitmap(photo);
+                } catch (IOException e) {
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
+	
+	
+	/*******************************************************************************************************************************/
+
+    private void imageUpload(final String imagePath) {
+        dialog = new ProgressDialog(ActivityContactInformation.this);
+        dialog.setTitle("Upload Image");
+        dialog.setMessage("Uploading...");
+        dialog.setCancelable(false);
+        dialog.show();
+
+        String paramURL = Config.Upload_doc_img;
+        SimpleMultiPartRequest smr = new SimpleMultiPartRequest(Request.Method.POST,
+                paramURL,
+                new Response.Listener<String>() {
+                    @Override
+                    public void onResponse(String response) {
+                        int status;
+                        String msg = null;
+
+                        try {
+                            JSONObject jsonObject = new JSONObject(response);
+                            status = jsonObject.getInt("status");
+                            dialog.dismiss();
+                            JSONObject object = jsonObject.getJSONObject("body");
+                            msg = object.getString("msg");
+                            if (status == 1) {
+
+                                Toaster.getToast(context, msg);
+
+                            } else {
+                                Toaster.getToast(context, "" + msg);
+                            }
+
+                        } catch (JSONException e) {
+                            e.printStackTrace();
+                        }
+
+                    }
+                }, new Response.ErrorListener() {
+            @Override
+            public void onErrorResponse(VolleyError error) {
+                dialog.dismiss();
+                Toast.makeText(context, "Timeout Error", Toast.LENGTH_SHORT).show();
+
+            }
+        }) {
+            @Override
+            protected Map<String, String> getParams() throws AuthFailureError {
+                Map<String, String> params = new HashMap<String, String>();
+                return params;
+            }
+        };
+
+        smr.addFile(shared.getUserId() + "," + doc, imagePath);
+        smr.setFixedStreamingMode(true);
+        smr.setRetryPolicy(new DefaultRetryPolicy(
+                30000,
+                DefaultRetryPolicy.DEFAULT_MAX_RETRIES,
+                DefaultRetryPolicy.DEFAULT_BACKOFF_MULT));
+        AppController.getInstance().addToRequestQueue(smr);
+
+    }
+	
+	/*************************************************************************************************************************************************/
+	
+    private String getRealPathFromURIPath(Uri contentURI, Activity activity) {
+        Cursor cursor = activity.getContentResolver().query(contentURI, null, null, null, null);
+        if (cursor == null) {
+            return contentURI.getPath();
+        } else {
+            cursor.moveToFirst();
+            int idx = cursor.getColumnIndex(MediaStore.Images.ImageColumns.DATA);
+            return cursor.getString(idx);
+        }
+    }
+
+    private void selectImage() {
+
+        final CharSequence[] options = {"Take Photo", "Choose from Gallery", "Cancel"};
+        AlertDialog.Builder builder = new AlertDialog.Builder(ActivityContactInformation.this);
+        builder.setTitle("Add Profile Photo!");
+        builder.setItems(options, new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int item) {
+
+                if (options[item].equals("Take Photo")) {
+                    initCatureImage();
+                } else if (options[item].equals("Choose from Gallery")) {
+                    initCaturePickupCemara();
+                } else if (options[item].equals("Cancel")) {
+                    dialog.dismiss();
+                }
+            }
+        });
+        builder.show();
+    }
+
+    private void setCaptureCemara() {
+        final Intent cameraIntent = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+        cameraIntent.addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        cameraIntent.putExtra(MediaStore.EXTRA_OUTPUT, cameraUrl);
+        startActivityForResult(cameraIntent, CHOOSE_CAPTURE_PHOTO_INTENT);
+    }
+
+    private void PickUpGallary() {
+        final Intent galleryIntent = new Intent(Intent.ACTION_GET_CONTENT, MediaStore.Images.Media.EXTERNAL_CONTENT_URI);
+        galleryIntent.setType("*/*");
+        final Intent chooserIntent = Intent.createChooser(galleryIntent, "Choose Image");
+        chooserIntent.putExtra(Intent.EXTRA_INITIAL_INTENTS, galleryIntent);
+        startActivityForResult(chooserIntent, CHOOSE_PHOTO_INTENT);
+    }
+
+    private void initCatureImage() {
+        PermissionUtil permissionUtil = new PermissionUtil();
+        if (permissionUtil.checkMarshMellowPermission()) {
+            if (permissionUtil.verifyPermissions(context, permissionUtil.getCameraPermissions()) && permissionUtil.verifyPermissions(context, permissionUtil.getGalleryPermissions()))
+                setCaptureCemara();
+            else {
+                ActivityCompat.requestPermissions((Activity) context, permissionUtil.getCameraPermissions(), SELECT_PICTURE_CAMERA);
+            }
+        } else {
+            setCaptureCemara();
+        }
+    }
+
+    private void initCaturePickupCemara() {
+        PermissionUtil permissionUtil = new PermissionUtil();
+
+        if (permissionUtil.checkMarshMellowPermission()) {
+            if (permissionUtil.verifyPermissions(context, permissionUtil.getCameraPermissions()) && permissionUtil.verifyPermissions(context, permissionUtil.getGalleryPermissions()))
+                PickUpGallary();
+            else {
+                ActivityCompat.requestPermissions((Activity) context, permissionUtil.getCameraPermissions(), SELECT_PHOTO_CAMERA);
+            }
+        } else {
+            PickUpGallary();
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == SELECT_PICTURE_CAMERA) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                initCatureImage();
+            }
+        } else if (requestCode == SELECT_PHOTO_CAMERA) {
+            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                initCaturePickupCemara();
+            }
+        }
+    }
+	
+	
+	
+	
+	
+	
+	
+	
+	
